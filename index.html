@@ -12,22 +12,13 @@
         <link rel="stylesheet" href="datatables/css/buttons.dataTables.min.css">
         <link rel="stylesheet" href="css/my.css">
         <script src="js/jquery-3.3.1.min.js"></script>
+        <script src="js/Chart.min.js"></script>
         <script src="datatables/js/jquery.dataTables.min.js"></script>
         <script src="datatables/js/dataTables.buttons.min.js"></script>
         <script src="datatables/js/buttons.html5.min.js"></script>
         <script src="datatables/js/jszip.min.js"></script>
         <script src="datatables/js/pdfmake.min.js"></script>
         <script src="datatables/js/vfs_fonts.js"></script>
-        <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
-        <!-- Global site tag (gtag.js) - Google Analytics -->
-		<script async src="https://www.googletagmanager.com/gtag/js?id=UA-74718697-4"></script>
-		<script>
-		  window.dataLayer = window.dataLayer || [];
-		  function gtag(){dataLayer.push(arguments);}
-		  gtag('js', new Date());
-		
-		  gtag('config', 'UA-74718697-4');
-		</script>
     </head>
     <body>
         <div class="input-table">
@@ -39,7 +30,7 @@
                         <td></td>
                         <td rowspan="4" style="border-left:1px solid grey;padding-left:35px;     width: 27%;">Ebbe a részbe kerülnek a hitelkalkulátorból (bankmonitor, bankráció,...) kidobott értékek. <br/>Az "éves kamat" nem egyenlő a "THM"-mel.<br/>Ha nincs meg a kezdő törlesztőrészlet a "Törlesztő számítása" gomb segítségével kiszámolható egy optimális érték.</td>
                         <td rowspan="4" style="border-left:1px solid grey;padding-left:35px; text-align: left;">
-                            Kalkulációs adatok mentése: &nbsp;<button class="" id="data_export" type="button">Mentés</button><br/>
+                            Kalkulációs adatok mentése: &nbsp;<button class="" id="data_save" type="button">Mentés</button><button class="" id="data_export" type="button">Mentés fájlba</button><br/>
                             Kalkulációs adatok betöltése: <input class="" id="data_import" type="file" name="data_import"></input>
                         </td>
                     </tr>
@@ -74,6 +65,10 @@
                     <tr>
                         <td><label>Havi költségek: </label></td>
                         <td><input id="mountlyfee" class="money" type="text" placeholder="Havi költségek" value="0" onchange="calc();"></input> Ft</td>
+                    </tr>
+                    <tr>
+                        <td><label>Első részlet dátuma: </label></td>
+                        <td><input id="startDate" class="date" type="date" placeholder="Első részlet" onchange="calc();" value="2019-01-01"></input></td>
                     </tr>
                 </tbody>
             </table>
@@ -240,9 +235,9 @@
         	</table>
             <button type="button" onclick="calc();">Számol</button>
         </div>
-
-        <div id="chart_div"></div>
-        <div id="chart_year_div"></div>
+		
+        <canvas id="canvas_month" height="50px"></canvas>
+        <canvas id="canvas_year" height="50px"></canvas>
 
         <div id="printouts" class="printouts">
             <table id="tabla" class="printtable">
@@ -316,6 +311,7 @@
 		
 		
 		
+		<script src="js/AnnuityLoan.js"></script>
 		<script src="js/my.js?V1.1.0"></script>
     </body>
 </html>
