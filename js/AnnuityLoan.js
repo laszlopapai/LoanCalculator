@@ -7,10 +7,10 @@ var AnnuityLoan = function() {
 	this.startFee = 0;
 	this.monthlyFee = 0;
 	this.prePays = [];	
-	this.interestChanges= [];
+	this.interestChanges = [];
 	
 	this.tabledata = [];
-	this.diagramdata = [];
+	this.monthDetails = [];
 	
 	this.originalSummary = {
 		months: 0,
@@ -59,7 +59,6 @@ var AnnuityLoan = function() {
 		}, prePay);
 		
 		this.prePays.push(prePay);
-		//this.calc();
 	}
 	
 	this.addInterestChange = function(interestChange)
@@ -71,12 +70,31 @@ var AnnuityLoan = function() {
 		}, interestChange);
 		
 		this.interestChanges.push(interestChange);
-		//this.calc();		
+	}
+	
+	this.clean = function()
+	{
+		this.prePays = [];
+		this.interestChanges = [];
+	}
+	
+	this.addMonthDetail = function(month, details)
+	{
+		while (this.monthDetails.length <= month)
+		{
+			this.monthDetails.push({
+				originalRemain: 0,
+				originalLoss: 0,
+				remain: 0,
+				loss: 0,
+			});
+		}
+		this.monthDetails[month] = $.extend(this.monthDetails[month], details);
 	}
 	
 	
 	this.calc = function()
-	{	
+	{
 		var changedRunMonth = this.runMonth;
 		var payed = 0;
 		var rate = this.rate;
@@ -99,7 +117,7 @@ var AnnuityLoan = function() {
 		var otherLossTotal 	= this.startFee;
 		var max_months_pay = 0;
 		
-		// read elotorlesztesek
+		// read pre-pays
 		for(j = 0; j < this.prePays.length; j++) {
 			var month = this.prePays[j].monthIndex;
 			var add = this.prePays[j].add;
@@ -134,16 +152,24 @@ var AnnuityLoan = function() {
 
 		
 		///Generate without prepayment
-		
+		this.monthDetails = [];
 		var woRemain = remain;
 		var woLoss = 0;
+		this.addMonthDetail(0, {
+			originalRemain: woRemain,
+			originalLoss: woLoss
+		});
 		for(woHonap = 1; woHonap <= this.runMonth && woRemain >= 0; woHonap++) {
 			prev = woRemain;
 			kamattorl = Math.round(woRemain * rate);
 			toketorl = due - kamattorl;
-			woRemain = woRemain - toketorl;
+			woRemain = Math.max(woRemain - toketorl, 0);
 			woLoss = woLoss + kamattorl;
 			otherLoss += this.monthlyFee;
+			this.addMonthDetail(woHonap,{
+				originalRemain: woRemain,
+				originalLoss: woLoss
+			});
 		}
 		
 		var startFullPayable = woLoss + startLoan + otherLoss;
@@ -162,7 +188,10 @@ var AnnuityLoan = function() {
 		///Generate data
 		
 		this.tabledata.push([0, '0', '0',Math.round(rate*1200 * 100)/100 , '0', '0', '0', convert2Money2(remain)]);
-		this.diagramdata.push([remain, 0]);
+		this.addMonthDetail(0,{
+			remain: remain,
+			loss: loss
+		});
 		
 		for(honap = 1; remain > 0 && honap <= 1000; honap++) {
 			var date = new Date(this.startDate);
@@ -237,7 +266,10 @@ var AnnuityLoan = function() {
 				max_months_pay = due;
 
 			this.tabledata.push([honapText, convert2Money2(prev), convert2Money2(due),Math.round(rate*1200 * 100)/100 , convert2Money2(kamattorl), convert2Money2(toketorl), convert2Money2(payed + loss), convert2Money2(remain)]);
-			this.diagramdata.push([remain, loss]);
+			this.addMonthDetail(honap,{
+				remain: remain,
+				loss: loss
+			});
 			changedRunMonth--;
 		}
 		
