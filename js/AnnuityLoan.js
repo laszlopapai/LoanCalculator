@@ -83,10 +83,10 @@ var AnnuityLoan = function() {
 		while (this.monthDetails.length <= month)
 		{
 			this.monthDetails.push({
-				originalRemain: 0,
-				originalLoss: 0,
-				remain: 0,
-				loss: 0,
+				originalRemain: undefined,
+				originalLoss: undefined,
+				remain: undefined,
+				loss: undefined,
 			});
 		}
 		this.monthDetails[month] = $.extend(this.monthDetails[month], details);

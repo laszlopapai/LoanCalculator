@@ -3,7 +3,7 @@
  * 
  * */
 var tableinstance;
-var monthChart;
+var capitalChart;
 var yearChart;
 
 $(function() {	
@@ -79,53 +79,34 @@ function initializeCharts()
 		return title;
 	};
 	
-	var datasetLables = ['Tőketartozás', 'Veszteség', 'Tőketartozás (Eredeti)', 'Veszteség (Eredeti)'];
+	var datasetLables = ['Eredeti', 'Módosított'];
 	var chartParams = {
 		type: 'line',
 		data: {
 			labels: undefined, // overriden below
 			datasets: [{
-				yAxisID: 'A',
 				label: datasetLables[0],
 				data: undefined, // overriden below
 				backgroundColor: 'rgba(54, 162, 235, 0.2)',
 				borderColor: 'rgba(54, 162, 235, 0.2)',
 				borderWidth: 1,
-				lineTension: 0
+				lineTension: 0,
+				fill: '1'
 			},
 			{
-				yAxisID: 'A',
 				label: datasetLables[1],
 				data: undefined, // overriden below
 				backgroundColor: 'rgba(255, 99, 132, 0.2)',
 				borderColor: 'rgba(255, 99, 132, 0.2)',
 				borderWidth: 1,
-				lineTension: 0,
-				fill: '-1'
-			},
-			{
-				yAxisID: 'B',
-				label: datasetLables[2],
-				data: undefined, // overriden below
-				backgroundColor: 'rgba(255, 206, 86, 0.2)',
-				borderColor: 'rgba(255, 206, 86, 0.2)',
-				borderWidth: 1,
-				lineTension: 0,
-				hidden: true
-			},
-			{
-				yAxisID: 'B',
-				label: datasetLables[3],
-				data: undefined, // overriden below
-				backgroundColor: 'rgba(75, 192, 192, 0.2)',
-				borderColor: 'rgba(75, 192, 192, 0.2)',
-				borderWidth: 1,
-				lineTension: 0,
-				fill: '-1',
-				hidden: true
+				lineTension: 0
 			}]
 		},
 		options: {
+			title: {
+				display: true,
+				text: undefined
+			},
 			scales: {				
 				xAxes: [{
 					display: true,
@@ -140,7 +121,6 @@ function initializeCharts()
 					}
 				}],
 				yAxes: [{
-					id: 'A',
 					ticks: {
 						beginAtZero: true,
 						callback: convert2Money2
@@ -149,13 +129,7 @@ function initializeCharts()
 					scaleLabel: {
 						display: true,
 						labelString: 'Tőketartozás / Költség'
-					},
-					stacked: true
-				},
-				{
-					id: 'B',
-					display: false,
-					stacked: true
+					}
 				}]
 			},
 			tooltips: {
@@ -171,33 +145,62 @@ function initializeCharts()
 			},
 			hover: {
 				mode: 'index'
+			},
+			plugins: {
+				zoom: {
+					// Container for pan options
+					pan: {
+						// Boolean to enable panning
+						enabled: true,
+
+						// Panning directions. Remove the appropriate direction to disable 
+						// Eg. 'y' would only allow panning in the y direction
+						mode: 'x'
+					},
+
+					// Container for zoom options
+					zoom: {
+						// Boolean to enable zooming
+						enabled: true,
+						
+						// Zooming directions. Remove the appropriate direction to disable 
+						// Eg. 'y' would only allow zooming in the y direction
+						mode: 'x',
+					}
+				}
 			}
 		}
 	};
 	
 	var yearConvas = document.getElementById('canvas_year').getContext('2d');
+	chartParams.options.title.text = "Költség";
+	chartParams.options.scales.yAxes[0].scaleLabel.labelString = "Költség";
 	yearChart = new Chart(yearConvas, $.extend(true, {
 		data: {
 			labels: [], //yearLabels
 			datasets: [
-				{data: []}, //yearDataRemain
 				{data: []}, //yearDataPaied
-				{data: []}, //yearDataRemainOrig
 				{data: []}, //yearDataPaiedOrig
 			]
 		}
 	}, chartParams));
 	
-	var monthCanvas = document.getElementById('canvas_month').getContext('2d');	
-	monthChart = new Chart(monthCanvas, $.extend(true, {
+	var monthCanvas = document.getElementById('canvas_month').getContext('2d');
+	chartParams.options.title.text = "Tőketartozás";
+	chartParams.options.scales.yAxes[0].scaleLabel.labelString = "Tőketartozás";
+	capitalChart = new Chart(monthCanvas, $.extend(true, {
 		data: {
 			labels: [], //monthLabels
 			datasets: [
 				{data: []}, //monthDataRemain
-				{data: []}, //monthDataPaied
 				{data: []}, //monthDataRemainOrig
-				{data: []}, //monthDataPaiedOrig
 			]
+		},
+		options: {
+			title: {
+				display: true,
+				text: 'Tőketartozás'
+			}
 		}
 	}, chartParams));
 }
@@ -408,11 +411,11 @@ function calc() {
         if(mode != 0) add = add - cost;
         add = add / (1.0 + rate);
         if(mode == 0) {
-            lloss = Math.round(add * rate);
+            lloss = addfull - add;
 			newdue = 0;
         }
         else {
-            lloss = cost + Math.round(add * rate);
+            lloss = cost + addfull - add;
         }
         if(month > 0 && add > 0){
         	elotorl.push([month, add, lloss, mode, aid, addfull, newdue]);
@@ -630,41 +633,39 @@ function drawBasic() {
 	yearChart.data.labels = [];
 	yearChart.data.datasets[0].data = [];
 	yearChart.data.datasets[1].data = [];
-	yearChart.data.datasets[2].data = [];
-	yearChart.data.datasets[3].data = [];
 	
-	monthChart.data.labels = [];
-	monthChart.data.datasets[0].data = [];
-	monthChart.data.datasets[1].data = [];
-	monthChart.data.datasets[2].data = [];
-	monthChart.data.datasets[3].data = [];
+	capitalChart.data.labels = [];
+	capitalChart.data.datasets[0].data = [];
+	capitalChart.data.datasets[1].data = [];
+	
+	var dataOrLast = function(data, i, pastData) {
+		if (data != undefined)
+			return data;
+		if (i > 0)
+			return pastData[i - 1];
+		return 0;
+	};
 	
 	for (var i = 0; i < alc.monthDetails.length; i++)
 	{
-		var remain = alc.monthDetails[i].remain;
-		var paied = alc.monthDetails[i].loss;
-		var remainOrig = alc.monthDetails[i].originalRemain;
-		var paiedOrig = alc.monthDetails[i].originalLoss;
+		yearChart.data.labels.push(i);
+		yearChart.data.datasets[0].data.push(
+			dataOrLast(alc.monthDetails[i].originalLoss, i, yearChart.data.datasets[0].data)
+		);
+		yearChart.data.datasets[1].data.push(
+			dataOrLast(alc.monthDetails[i].loss, i, yearChart.data.datasets[1].data)
+		);
 		
-		if (i % 12 == 0) {
-			yearChart.data.labels.push(i);
-			
-			yearChart.data.datasets[0].data.push(remain);
-			yearChart.data.datasets[1].data.push(paied);
-			
-			yearChart.data.datasets[2].data.push(remainOrig);		
-			yearChart.data.datasets[3].data.push(paiedOrig);
-		}
-		monthChart.data.labels.push(i);
-		
-		monthChart.data.datasets[0].data.push(remain);
-		monthChart.data.datasets[1].data.push(paied);
-		
-		monthChart.data.datasets[2].data.push(remainOrig);		
-		monthChart.data.datasets[3].data.push(paiedOrig);
+		capitalChart.data.labels.push(i);		
+		capitalChart.data.datasets[0].data.push(
+			dataOrLast(alc.monthDetails[i].originalRemain, i, capitalChart.data.datasets[0].data)
+		);
+		capitalChart.data.datasets[1].data.push(
+			dataOrLast(alc.monthDetails[i].remain, i, capitalChart.data.datasets[1].data)
+		);		
 	}
 	yearChart.update();
-	monthChart.update();
+	capitalChart.update();
 }
 
 var prefieldnum = 1;
