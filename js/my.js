@@ -3,9 +3,12 @@
  * 
  * */
 var tableinstance;
+var capitalChart;
+var yearChart;
 
-$(function() {
+$(function() {	
     $("#data_export").click(data_export);
+    $("#data_save").click(data_save);
     document.getElementById('data_import').addEventListener('change', data_import, false);
 
     $(".formatted-double").on("input", function(event) {
@@ -47,10 +50,8 @@ $(function() {
     $(".money2").on("input", function(event) {
         $(this).val(procNumberInput($(this).val(),true,true,2,2));
     });
-
-    google.charts.load('current', {packages: ['corechart', 'line']});
-    google.charts.setOnLoadCallback(drawBasic);
-
+	
+	initializeCharts();
     tableinstance = $('#tabla').DataTable({
         "paging":   false,
         "ordering": false,
@@ -62,9 +63,147 @@ $(function() {
         ]
     } );
 
-    calc();
+    data_load();
 });
 
+function initializeCharts()
+{
+	var timeScaleName = function(x) {
+		var years = Math.trunc(x / 12);
+		var months = x % 12;
+		var title = "";
+		if (years != 0 || months == 0)
+			title += years + " év";
+		if (months != 0)
+			title += " " + months + " hónap";
+		return title;
+	};
+	
+	var datasetLables = ['Eredeti', 'Módosított'];
+	var chartParams = {
+		type: 'line',
+		data: {
+			labels: undefined, // overriden below
+			datasets: [{
+				label: datasetLables[0],
+				data: undefined, // overriden below
+				backgroundColor: 'rgba(54, 162, 235, 0.2)',
+				borderColor: 'rgba(54, 162, 235, 0.2)',
+				borderWidth: 1,
+				lineTension: 0,
+				fill: '1'
+			},
+			{
+				label: datasetLables[1],
+				data: undefined, // overriden below
+				backgroundColor: 'rgba(255, 99, 132, 0.2)',
+				borderColor: 'rgba(255, 99, 132, 0.2)',
+				borderWidth: 1,
+				lineTension: 0
+			}]
+		},
+		options: {
+			title: {
+				display: true,
+				text: undefined
+			},
+			scales: {				
+				xAxes: [{
+					display: true,
+					scaleLabel: {
+						display: false,
+						labelString: "Idő"
+					},
+					ticks: {
+						callback: function(value) {
+							return timeScaleName(value);
+						}
+					}
+				}],
+				yAxes: [{
+					ticks: {
+						beginAtZero: true,
+						callback: convert2Money2
+					},
+					display: true,
+					scaleLabel: {
+						display: true,
+						labelString: 'Tőketartozás / Költség'
+					}
+				}]
+			},
+			tooltips: {
+				mode: 'index',
+				callbacks: {
+					title: function(data){
+						return timeScaleName(data[0].xLabel)
+					},
+					label: function(data) {
+						return datasetLables[data.datasetIndex] + ": " + convert2Money2(parseInt(data.value));
+					}
+				}
+			},
+			hover: {
+				mode: 'index'
+			},
+			plugins: {
+				zoom: {
+					// Container for pan options
+					pan: {
+						// Boolean to enable panning
+						enabled: true,
+
+						// Panning directions. Remove the appropriate direction to disable 
+						// Eg. 'y' would only allow panning in the y direction
+						mode: 'x'
+					},
+
+					// Container for zoom options
+					zoom: {
+						// Boolean to enable zooming
+						enabled: true,
+						
+						// Zooming directions. Remove the appropriate direction to disable 
+						// Eg. 'y' would only allow zooming in the y direction
+						mode: 'x',
+					}
+				}
+			}
+		}
+	};
+	
+	var yearConvas = document.getElementById('canvas_year').getContext('2d');
+	chartParams.options.title.text = "Költség";
+	chartParams.options.scales.yAxes[0].scaleLabel.labelString = "Költség";
+	yearChart = new Chart(yearConvas, $.extend(true, {
+		data: {
+			labels: [], //yearLabels
+			datasets: [
+				{data: []}, //yearDataPaied
+				{data: []}, //yearDataPaiedOrig
+			]
+		}
+	}, chartParams));
+	
+	var monthCanvas = document.getElementById('canvas_month').getContext('2d');
+	chartParams.options.title.text = "Tőketartozás";
+	chartParams.options.scales.yAxes[0].scaleLabel.labelString = "Tőketartozás";
+	capitalChart = new Chart(monthCanvas, $.extend(true, {
+		data: {
+			labels: [], //monthLabels
+			datasets: [
+				{data: []}, //monthDataRemain
+				{data: []}, //monthDataRemainOrig
+			]
+		},
+		options: {
+			title: {
+				display: true,
+				text: 'Tőketartozás'
+			}
+		}
+	}, chartParams));
+}
 
 function procNumberInput(value, real, signed, precision, padTo, forcePad) {
 	real = typeof real !== 'undefined' ? real : true;
@@ -210,8 +349,9 @@ function disablecost(id) {
     }
 }
 
+var alc = new AnnuityLoan();
 var diagramdata = new Array();
-var diagramdata_year = new Array();
+var diagramdataOrig = new Array();
 var tabledata = new Array();
 
 function calc() {
@@ -227,10 +367,10 @@ function calc() {
     var remain = getNumVal($('#loan'));
     var startLoan = getNumVal($('#loan'));
     var torleszto = getNumVal($('#due'));
+    var startDate = new Date($('#startDate').val());
     var i, j, prev, kamattorl, toketorl, loss = 0, lloss, min, totalAid = 0, pluspay = 0;
     tableinstance.clear();
     diagramdata = [];
-    diagramdata_year = [];
     tabledata = [];
     var elotorl = new Array();
     var interestList = new Array();
@@ -238,13 +378,16 @@ function calc() {
     var otherLoss 		= getNumVal($('#startfee'));
     var otherLossTotal 	= getNumVal($('#startfee'));
     var max_months_pay = 0;
-        
-    gtag('event', startLoan.toString(), {
-    	  'event_category': getNumVal($('#rate')).toString(),
-    	  'event_label': torleszto.toString(),
-    	  'value': getNumVal($('#run'))
-    	});
     
+	alc.clean();
+	alc.runMonth = getNumVal($('#runmonth'));
+	alc.rate = kamat;
+	alc.loan = remain;
+	alc.due = torleszto;
+	alc.startDate = startDate;
+	alc.startFee = otherLoss;
+	alc.monthlyFee = getNumVal($('#mountlyfee'));
+	
     // read elotorlesztesek
     for(j = 0; j < prefieldnum; j++) {
         var month = getNumVal($('#month-' + j));
@@ -255,15 +398,24 @@ function calc() {
         var cost = getNumVal($('#pre-cost-' + j));
         var newdue = Math.abs(getNumVal($('#pre-newdue-' + j)));
         var mode = parseInt($('input[name=pre-mode-' + j + ']:checked').val());
+		alc.addPrePay({
+			monthIndex: month,
+			add: add,
+			aid: aid,
+			rate: rate,
+			cost: cost,
+			newDue: newdue,
+			keepLength: mode == 0
+		});
 
         if(mode != 0) add = add - cost;
-        add = add - (add * rate);
+        add = add / (1.0 + rate);
         if(mode == 0) {
-            lloss = Math.round(add * rate);
+            lloss = addfull - add;
 			newdue = 0;
         }
         else {
-            lloss = cost + Math.round(add * rate);
+            lloss = cost + addfull - add;
         }
         if(month > 0 && add > 0){
         	elotorl.push([month, add, lloss, mode, aid, addfull, newdue]);
@@ -273,6 +425,11 @@ function calc() {
     	var month = getNumVal($('#interest-month-' + j));
     	var rate = getNumVal($('#interest-rate-' + j));
     	var mode = parseInt($('input[name=interest-mode-' + j + ']:checked').val());
+		alc.addInterestChange({
+			monthIndex: month,
+			rate: rate,
+			keepLength: mode == 0
+		});
     	
     	if(month > 0 && rate > 0){
     		interestList.push([month,rate,mode]);
@@ -281,16 +438,18 @@ function calc() {
 
     
     ///Generate without prepayment
-    
+	diagramdataOrig = []
+	diagramdataOrig.push([remain, 0]);
     var woRemain = remain;
     var woLoss = 0;
     for(woHonap = 1; woHonap <= futamido && woRemain >= 0; woHonap++) {
         prev = woRemain;
         kamattorl = Math.round(woRemain * kamat);
         toketorl = torleszto - kamattorl;
-        woRemain = woRemain - toketorl;
+        woRemain = Math.max(woRemain - toketorl, 0);
         woLoss = woLoss + kamattorl;
         otherLoss += getNumVal($('#mountlyfee'));
+		diagramdataOrig.push([woRemain, woLoss]);
     }
     
     var startFullPayable = woLoss + startLoan + otherLoss;
@@ -308,10 +467,14 @@ function calc() {
     ///Generate data
     
     tabledata.push([0, '0', '0',Math.round(kamat*1200 * 100)/100 , '0', '0', '0', convert2Money2(remain)]);
-    diagramdata.push([0,remain]);
-    diagramdata_year.push([0,remain]);
+    diagramdata.push([remain, 0]);
     
     for(honap = 1; remain > 0 && honap <= 1000; honap++) {
+		var date = new Date(startDate);
+		date.setMonth(startDate.getMonth() + honap - 1);
+		dateText = date.toLocaleDateString();
+		honapText = '[' + dateText + '] ' + honap;
+		
         for(j = 0; j < interestList.length; j++) {
             var month = interestList[j][0];
 
@@ -327,7 +490,7 @@ function calc() {
                 else{
                 	new_futamido = futamidoszamitas(remain,kamat,torleszto,new_futamido);
                 }
-                tabledata.push([honap, '', '',Math.round(kamat*1200 * 100)/100, '', '', '', '']);
+                tabledata.push([honapText, '', '',Math.round(kamat*1200 * 100)/100, '', '', '', '']);
             }
         }
         for(j = 0; j < elotorl.length; j++) {
@@ -343,7 +506,7 @@ function calc() {
         		
         		pluspay += addfull - aid;
         		totalAid += aid;
-        		otherLossTotal += lloss;
+        		//otherLossTotal += lloss;
         		loss = loss + lloss;
         		remain = remain - add;
         		if (remain < 0){
@@ -358,7 +521,7 @@ function calc() {
 						torleszto = newdue;
         			new_futamido = futamidoszamitas(remain,kamat,torleszto,new_futamido);
         		}
-        		tabledata.push([honap, '', '', '' ,'', convert2Money2(add), '', '']);
+        		tabledata.push([honapText, '', '', '' ,'', convert2Money2(add), '', '']);
         	}
         }
 
@@ -378,11 +541,8 @@ function calc() {
         if (max_months_pay < torleszto)
         	max_months_pay = torleszto;
 
-        tabledata.push([honap, convert2Money2(prev), convert2Money2(torleszto),Math.round(kamat*1200 * 100)/100 , convert2Money2(kamattorl), convert2Money2(toketorl), convert2Money2(mar_befizetett + loss), convert2Money2(remain)]);
-        diagramdata.push([honap,remain]);
-        if(honap % 12 == 0){
-        	diagramdata_year.push([honap/12,remain]);
-        }
+        tabledata.push([honapText, convert2Money2(prev), convert2Money2(torleszto),Math.round(kamat*1200 * 100)/100 , convert2Money2(kamattorl), convert2Money2(toketorl), convert2Money2(mar_befizetett + loss), convert2Money2(remain)]);
+        diagramdata.push([remain, loss]);
         new_futamido--;
     }
     
@@ -421,6 +581,7 @@ function calc() {
     if(tableinstance) {
         tableinstance.rows.add(tabledata).draw();
     }
+	alc.calc();
     drawBasic();
 }
 
@@ -469,38 +630,42 @@ function futamidoszamitas(remain,kamat,torleszto,new_futamido) {
 }
 
 function drawBasic() {
-    var data = new google.visualization.DataTable();
-    data.addColumn('number', 'X');
-    data.addColumn('number', 'Tőketartozás');
-
-    data.addRows(diagramdata);
-
-    var options = {
-        hAxis: {
-        title: 'Hónapok'
-        },
-        vAxis: {
-        title: 'Tőketartozás'
-        }
-    };
-    var chart = new google.visualization.LineChart(document.getElementById('chart_div'));
-    chart.draw(data, options);
-
-    data = new google.visualization.DataTable();
-    data.addColumn('number', 'X');
-    data.addColumn('number', 'Tőketartozás');
-
-    data.addRows(diagramdata_year);
-    options = {
-        hAxis: {
-        title: 'Évek'
-        },
-        vAxis: {
-        title: 'Tőketartozás'
-        }
-    };
-    chart = new google.visualization.LineChart(document.getElementById('chart_year_div'));
-    chart.draw(data, options);
+	yearChart.data.labels = [];
+	yearChart.data.datasets[0].data = [];
+	yearChart.data.datasets[1].data = [];
+	
+	capitalChart.data.labels = [];
+	capitalChart.data.datasets[0].data = [];
+	capitalChart.data.datasets[1].data = [];
+	
+	var dataOrLast = function(data, i, pastData) {
+		if (data != undefined)
+			return data;
+		if (i > 0)
+			return pastData[i - 1];
+		return 0;
+	};
+	
+	for (var i = 0; i < alc.monthDetails.length; i++)
+	{
+		yearChart.data.labels.push(i);
+		yearChart.data.datasets[0].data.push(
+			dataOrLast(alc.monthDetails[i].originalLoss, i, yearChart.data.datasets[0].data)
+		);
+		yearChart.data.datasets[1].data.push(
+			dataOrLast(alc.monthDetails[i].loss, i, yearChart.data.datasets[1].data)
+		);
+		
+		capitalChart.data.labels.push(i);		
+		capitalChart.data.datasets[0].data.push(
+			dataOrLast(alc.monthDetails[i].originalRemain, i, capitalChart.data.datasets[0].data)
+		);
+		capitalChart.data.datasets[1].data.push(
+			dataOrLast(alc.monthDetails[i].remain, i, capitalChart.data.datasets[1].data)
+		);		
+	}
+	yearChart.update();
+	capitalChart.update();
 }
 
 var prefieldnum = 1;
@@ -564,7 +729,7 @@ function addInterest(mounth, plusInterest){
 
 function data_load() {
 	
-    data_from_storage = JSON.parse(sessionStorage.getItem("data"));
+    data_from_storage = JSON.parse(localStorage.getItem("data"));
     if (data_from_storage) {
         $("#loan").val(data_from_storage.loan);
         $("#rate").val(data_from_storage.rate);
@@ -576,6 +741,7 @@ function data_load() {
         $("#due").val(data_from_storage.due);
         $("#startfee").val(data_from_storage.startfee);
         $("#mountlyfee").val(data_from_storage.mountlyfee);
+        $("#startDate").val(data_from_storage.startDate);
         if (data_from_storage.pre.key_count) {
             for (i = 1; i < data_from_storage.pre.key_count; i++) {
                 addPreFields();
@@ -626,6 +792,7 @@ function data_save() {
         due: $("#due").val(),
         startfee: $("#startfee").val(),
         mountlyfee: $("#mountlyfee").val(),
+        startDate: $("#startDate").val(),
         pre: {
             month: month,
             pre_add: pre_add,
@@ -637,7 +804,7 @@ function data_save() {
             key_count: $("input[id^=month-]").length
         }
     };
-    sessionStorage.setItem("data", JSON.stringify(data_to_save));
+    localStorage.setItem("data", JSON.stringify(data_to_save));
 }
 
 function data_export() {
@@ -646,7 +813,7 @@ function data_export() {
         data_save();
         var element = document.createElement("a");
         element.style.display = "none";
-        element.setAttribute("href", "data:text/json;charset=utf-8," + encodeURIComponent(sessionStorage.getItem("data")));
+        element.setAttribute("href", "data:text/json;charset=utf-8," + encodeURIComponent(localStorage.getItem("data")));
         element.setAttribute("download", "szamolos.json");
         document.body.appendChild(element);
         element.click();
@@ -667,7 +834,7 @@ function data_import(evt) {
     reader.onload = (function (theFile) {
         return function (e) {
             try {
-                sessionStorage.setItem("data", e.target.result);
+                localStorage.setItem("data", e.target.result);
                 data_load();
             } catch (ex) {
 
